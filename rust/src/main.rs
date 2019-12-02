@@ -7,20 +7,26 @@ use std::io::prelude::*;
 use std::str;
 
 fn main() -> io::Result<()> {
-    let mut instructions: Vec<u32> = vec![];
+    let mut original_memory: Vec<u32> = vec![];
     let stdin = io::stdin();
     for item in stdin.lock().split(b',') {
         let bytes = item?;
         let serialized = str::from_utf8(&bytes)
             .expect("Could not create string")
             .replace("\n", "");
-        instructions.push(serialized.parse().expect("Could not parse number"));
+        original_memory.push(serialized.parse().expect("Could not parse number"));
     }
-    execute_intcode(&mut instructions);
-    let stringified: Vec<String> = instructions
-        .into_iter()
-        .map(|item| item.to_string())
-        .collect();
-    println!("Results: {}", stringified.join(","));
+    'outer: for i in 0..99 {
+        for j in 0..99 {
+            let mut instructions = original_memory.clone();
+            instructions[1] = i;
+            instructions[2] = j;
+            execute_intcode(&mut instructions);
+            if instructions[0] == 19690720 {
+                println!("noun: {:?}, verb: {:?}, answer: {:?}", i, j, 100 * i + j);
+                break 'outer;
+            }
+        }
+    }
     Ok(())
 }
