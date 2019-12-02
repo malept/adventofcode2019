@@ -1,15 +1,26 @@
 mod day1;
+mod day2;
 
-use day1::fuel_for_modules;
+use day2::execute_intcode;
 use std::io;
 use std::io::prelude::*;
+use std::str;
 
 fn main() -> io::Result<()> {
-    let mut masses: Vec<u32> = vec![];
+    let mut instructions: Vec<u32> = vec![];
     let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        masses.push(line?.parse().expect("Could not parse number"));
+    for item in stdin.lock().split(b',') {
+        let bytes = item?;
+        let serialized = str::from_utf8(&bytes)
+            .expect("Could not create string")
+            .replace("\n", "");
+        instructions.push(serialized.parse().expect("Could not parse number"));
     }
-    println!("Fuel requirements: {:?}", fuel_for_modules(masses));
+    execute_intcode(&mut instructions);
+    let stringified: Vec<String> = instructions
+        .into_iter()
+        .map(|item| item.to_string())
+        .collect();
+    println!("Results: {}", stringified.join(","));
     Ok(())
 }
