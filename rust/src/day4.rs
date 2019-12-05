@@ -2,13 +2,13 @@ use std::num::ParseIntError;
 use std::str::FromStr;
 
 fn valid_password(password: &str) -> bool {
-    password.len() == 6 && has_double_digits(password) && digits_never_decrease(password)
+    password.len() == 6 && has_exactly_double_digits(password) && digits_never_decrease(password)
 }
 
-fn has_double_digits(password: &str) -> bool {
-    vec!["00", "11", "22", "33", "44", "55", "66", "77", "88", "99"]
+fn has_exactly_double_digits(password: &str) -> bool {
+    vec!["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
         .iter()
-        .any(|double| password.contains(double))
+        .any(|digit| password.contains(&digit.repeat(2)) && !password.contains(&digit.repeat(3)))
 }
 
 fn digits_never_decrease(password: &str) -> bool {
@@ -102,11 +102,14 @@ mod tests {
 
     #[test]
     fn test_valid_password() {
-        assert!(valid_password("111111"));
+        assert!(!valid_password("111111"));
         assert!(!valid_password("223450"));
         assert!(!valid_password("123789"));
         assert!(valid_password("122345"));
-        assert!(valid_password("111123"));
+        assert!(!valid_password("111123"));
+        assert!(valid_password("112233"));
+        assert!(!valid_password("123444"));
+        assert!(valid_password("111122"));
     }
 
     #[test]
