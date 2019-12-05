@@ -1,19 +1,21 @@
 mod day1;
 mod day2;
 mod day3;
+mod day4;
 
-use day3::Wire;
+use day4::PasswordRange;
 use std::io;
 
 fn main() -> io::Result<()> {
+    let mut line = String::new();
     let stdin = io::stdin();
-    let mut line1 = String::new();
-    let mut line2 = String::new();
-    if stdin.read_line(&mut line1).is_ok() && stdin.read_line(&mut line2).is_ok() {
-        let wire1 = Wire::from_directions_string(&line1);
-        let wire2 = Wire::from_directions_string(&line2);
-        let steps = wire1.total_steps_for_nearest_intersection(&wire2);
-        println!("Steps: {}", steps);
+    if stdin.read_line(&mut line).is_ok() {
+        let passwords = line
+            .trim_end()
+            .parse::<PasswordRange>()
+            .expect("Cannot parse password range")
+            .valid_passwords();
+        println!("Number of valid passwords: {}", passwords.len());
     }
     Ok(())
 }
