@@ -34,6 +34,8 @@ impl Mode {
 enum Operation {
     Add,
     Multiply,
+    LessThan,
+    Equals,
 }
 
 pub struct Computer {
@@ -70,27 +72,14 @@ impl Computer {
 
     fn execute_opcode(&mut self, opcode: i32, modes: Vec<Mode>) -> Result<(), ()> {
         match opcode {
-            1 => {
-                self.execute_operation(Operation::Add, modes);
-                self.pointer += 4;
-            }
-            2 => {
-                self.execute_operation(Operation::Multiply, modes);
-                self.pointer += 4;
-            }
-            3 => {
-                if let Some(input_value) = self.input {
-                    let input_address = self.memory[self.pointer + 1] as usize;
-                    self.memory[input_address] = input_value;
-                } else {
-                    panic!("ERROR! Input opcode specified, but no input specified");
-                }
-                self.pointer += 2;
-            }
-            4 => {
-                self.output = Some(self.memory[self.memory[self.pointer + 1] as usize]);
-                self.pointer += 2;
-            }
+            1 => self.execute_operation(Operation::Add, modes),
+            2 => self.execute_operation(Operation::Multiply, modes),
+            3 => self.set_input(),
+            4 => self.set_output(modes),
+            5 => self.set_pointer(true, modes),
+            6 => self.set_pointer(false, modes),
+            7 => self.execute_operation(Operation::LessThan, modes),
+            8 => self.execute_operation(Operation::Equals, modes),
             99 => return Err(()),
             _ => panic!("Unknown opcode: {:?}", opcode),
         }
@@ -107,9 +96,48 @@ impl Computer {
         let result = match operation {
             Operation::Add => operand1 + operand2,
             Operation::Multiply => operand1 * operand2,
+            Operation::LessThan => {
+                if operand1 < operand2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            Operation::Equals => {
+                if operand1 == operand2 {
+                    1
+                } else {
+                    0
+                }
+            }
         };
 
         self.memory[output_address] = result;
+        self.pointer += 4;
+    }
+
+    fn set_input(&mut self) {
+        if let Some(input_value) = self.input {
+            let input_address = self.memory[self.pointer + 1] as usize;
+            self.memory[input_address] = input_value;
+        } else {
+            panic!("ERROR! Input opcode specified, but no input specified");
+        }
+        self.pointer += 2;
+    }
+
+    fn set_output(&mut self, modes: Vec<Mode>) {
+        self.output = Some(self.get_value(1, &modes[0]));
+        self.pointer += 2;
+    }
+
+    fn set_pointer(&mut self, test: bool, modes: Vec<Mode>) {
+        let value = self.get_value(1, &modes[0]);
+        if (value != 0) == test {
+            self.pointer = self.get_value(2, &modes[1]) as usize;
+        } else {
+            self.pointer += 3;
+        }
     }
 
     fn get_value(&self, offset: usize, mode: &Mode) -> i32 {
@@ -120,7 +148,7 @@ impl Computer {
     }
 }
 
-pub fn memory_from_string<T: io::BufRead>(input: T) -> io::Result<Memory> {
+pub fn memory_from_io<T: io::BufRead>(input: T) -> io::Result<Memory> {
     let mut memory = vec![];
     for item in input.split(b',') {
         let bytes = item?;
@@ -165,8 +193,16 @@ mod tests {
 
     #[test]
     fn test_execute_output() {
-        let mut computer = Computer::new(vec![4, 0, 4, 7, 4, 3, 99, 12]);
-        assert_eq!(Some(7), computer.execute(None));
+        assert_intcode_output(vec![4, 0, 4, 7, 4, 3, 99, 12], None, 7);
+
+        let memory = vec![
+            3, 21, 1008, 21, 8, 20, 1005, 20, 22, 107, 8, 21, 20, 1006, 20, 31, 1106, 0, 36, 98, 0,
+            0, 1002, 21, 125, 20, 4, 20, 1105, 1, 46, 104, 999, 1105, 1, 46, 1101, 1000, 1, 20, 4,
+            20, 1105, 1, 46, 98, 99,
+        ];
+        assert_intcode_output(memory.clone(), Some(4), 999);
+        assert_intcode_output(memory.clone(), Some(8), 1000);
+        assert_intcode_output(memory.clone(), Some(12), 1001);
     }
 
     #[test]
@@ -174,9 +210,61 @@ mod tests {
         assert_intcode_executed(vec![1002, 4, 3, 4, 33], vec![1002, 4, 3, 4, 99], None);
     }
 
+    #[test]
+    fn test_less_than() {
+        assert_intcode_output(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8], Some(1), 1);
+        assert_intcode_output(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8], Some(8), 0);
+        assert_intcode_output(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8], Some(9), 0);
+
+        assert_intcode_output(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99], Some(1), 1);
+        assert_intcode_output(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99], Some(8), 0);
+        assert_intcode_output(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99], Some(9), 0);
+    }
+
+    #[test]
+    fn test_equals() {
+        assert_intcode_output(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8], Some(1), 0);
+        assert_intcode_output(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8], Some(8), 1);
+        assert_intcode_output(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8], Some(9), 0);
+
+        assert_intcode_output(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99], Some(1), 0);
+        assert_intcode_output(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99], Some(8), 1);
+        assert_intcode_output(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99], Some(9), 0);
+    }
+
+    #[test]
+    fn test_jump() {
+        assert_intcode_output(
+            vec![3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9],
+            Some(0),
+            0,
+        );
+        assert_intcode_output(
+            vec![3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9],
+            Some(1),
+            1,
+        );
+
+        assert_intcode_output(
+            vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1],
+            Some(0),
+            0,
+        );
+        assert_intcode_output(
+            vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1],
+            Some(1),
+            1,
+        );
+    }
+
     fn assert_intcode_executed(memory: Memory, expected: Memory, input: Option<i32>) {
         let mut computer = Computer::new(memory);
         computer.execute(input);
         assert_eq!(expected.as_slice(), computer.memory.as_slice());
+    }
+
+    fn assert_intcode_output(memory: Memory, input: Option<i32>, expected: i32) {
+        let mut computer = Computer::new(memory);
+        assert_eq!(Some(expected), computer.execute(input));
     }
 }
