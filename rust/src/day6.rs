@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct Object {
@@ -17,6 +17,67 @@ impl Object {
 
     pub fn set_orbiting(&mut self, orbiting: &str) {
         self.orbiting = Some(orbiting.to_string())
+    }
+
+    pub fn orbit_list(&self, map: &OrbitMap) -> Vec<String> {
+        let mut orbits = vec![];
+        let mut parent = self.orbiting.clone();
+        while let Some(parent_name) = parent {
+            orbits.push(parent_name.clone());
+            parent = match map.get(&parent_name) {
+                Some(parent_object) => parent_object.borrow().orbiting.clone(),
+                None => None,
+            };
+        }
+
+        orbits
+    }
+
+    fn orbit_distance(&self, other: &Object, map: &OrbitMap) -> usize {
+        let intersection = self.orbit_intersection(other, map);
+        let orbit_list = self.orbit_list(map);
+        let other_orbit_list = other.orbit_list(map);
+
+        2 + orbit_list
+            .iter()
+            .position(|item| *item == intersection)
+            .unwrap()
+            + other_orbit_list
+                .iter()
+                .position(|item| *item == intersection)
+                .unwrap()
+    }
+
+    pub fn orbit_intersection(&self, other: &Object, map: &OrbitMap) -> String {
+        let orbit_list = self.orbit_list(map);
+        let orbit_set: HashSet<&str> = orbit_list.iter().map(|item| item.as_str()).collect();
+        let other_orbit_list = other.orbit_list(map);
+        let other_orbit_set: HashSet<&str> =
+            other_orbit_list.iter().map(|item| item.as_str()).collect();
+        let intersection = orbit_set.intersection(&other_orbit_set);
+        intersection
+            .min_by(|x, y| {
+                let x_position = orbit_list
+                    .iter()
+                    .position(|item| item.as_str() == **x)
+                    .expect(format!("Cannot find {}", x).as_str())
+                    + other_orbit_list
+                        .iter()
+                        .position(|item| item.as_str() == **x)
+                        .expect(format!("Cannot find {}", x).as_str());
+                let y_position = orbit_list
+                    .iter()
+                    .position(|item| item.as_str() == **y)
+                    .expect(format!("Cannot find {}", y).as_str())
+                    + other_orbit_list
+                        .iter()
+                        .position(|item| item.as_str() == **y)
+                        .expect(format!("Cannot find {}", y).as_str());
+
+                x_position.cmp(&y_position)
+            })
+            .expect("List empty")
+            .to_string()
     }
 
     pub fn orbits(&self, map: &OrbitMap) -> u32 {
@@ -70,9 +131,48 @@ pub fn orbit_count_checksum(mapping: &str) -> u32 {
         .sum()
 }
 
+pub fn orbital_transfers(mapping: &str, object_name_1: &str, object_name_2: &str) -> usize {
+    let map = orbit_map_from_string(mapping);
+    let object_1 = map
+        .get(object_name_1)
+        .expect(format!("Cannot find {}", object_name_1).as_str())
+        .borrow();
+    let object_2 = map
+        .get(object_name_2)
+        .expect(format!("Cannot find {}", object_name_2).as_str())
+        .borrow();
+
+    object_1.orbit_distance(&object_2, &map) - 2
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{orbit_count_checksum, orbit_map_from_string};
+    use super::{orbit_count_checksum, orbit_map_from_string, orbital_transfers};
+
+    const MAPPING: &'static str = "COM)B
+B)C
+C)D
+D)E
+E)F
+B)G
+G)H
+D)I
+E)J
+J)K
+K)L";
+    const SANTA_MAPPING: &'static str = "COM)B
+B)C
+C)D
+D)E
+E)F
+B)G
+G)H
+D)I
+E)J
+J)K
+K)L
+K)YOU
+I)SAN";
 
     #[test]
     fn test_orbit_map_from_string() {
@@ -87,19 +187,37 @@ mod tests {
 
     #[test]
     fn test_orbit_count_checksum() {
-        println!("test orbit_count_checksum");
-        let mapping = "COM)B
-B)C
-C)D
-D)E
-E)F
-B)G
-G)H
-D)I
-E)J
-J)K
-K)L";
-        println!("Mapping: {}", mapping);
-        assert_eq!(42, orbit_count_checksum(mapping));
+        assert_eq!(42, orbit_count_checksum(MAPPING));
+    }
+
+    #[test]
+    fn test_object_orbit_list() {
+        let map = orbit_map_from_string(MAPPING);
+        let object = map.get("H").expect("Cannot find H").borrow();
+        assert_eq!(
+            vec!["G", "B", "COM"].as_slice(),
+            object.orbit_list(&map).as_slice()
+        );
+    }
+
+    #[test]
+    fn test_object_orbit_intersection() {
+        let map = orbit_map_from_string(SANTA_MAPPING);
+        let santa = map.get("SAN").expect("Cannot find SAN").borrow();
+        let you = map.get("YOU").expect("Cannot find YOU").borrow();
+        assert_eq!("D".to_string(), you.orbit_intersection(&santa, &map));
+    }
+
+    #[test]
+    fn test_object_orbit_distance() {
+        let map = orbit_map_from_string(SANTA_MAPPING);
+        let santa = map.get("SAN").expect("Cannot find SAN").borrow();
+        let you = map.get("YOU").expect("Cannot find YOU").borrow();
+        assert_eq!(6, you.orbit_distance(&santa, &map));
+    }
+
+    #[test]
+    fn test_orbital_transfers() {
+        assert_eq!(4, orbital_transfers(SANTA_MAPPING, "SAN", "YOU"));
     }
 }
